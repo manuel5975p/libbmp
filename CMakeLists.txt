@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.10)
+project(libbmp)
+add_library(libbmp INTERFACE)
+target_include_directories(libbmp INTERFACE "${CMAKE_CURRENT_LIST_DIR}/include")
+endif()
