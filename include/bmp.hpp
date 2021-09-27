@@ -1,25 +1,24 @@
-#include <cstdio>
-#include <iostream>
-#include <vector>
-using std::fprintf;
+#include <type_traits>
+#include <concepts>
+#include <algorithm>
+#include <ostream>
+#include <iterator>
+
 template <typename T>
 class has_cols
 {
-    typedef char one;
-    struct two { char x[2]; };
-
-    template <typename C> static one test( decltype(&C::cols) ) ;
-    template <typename C> static two test(...);    
+    template <typename C> static std::true_type test( decltype(&C::cols) ) ;
+    template <typename C> static std::false_type test(...);
 
 public:
-    enum { value = sizeof(test<T>(0)) == sizeof(char) };
+    static constexpr bool value = decltype(test<T>(0))::value;
 };
 
 
 struct dimension_obtainer{
     size_t width;
     size_t height;
-    
+
     template<typename T>
     dimension_obtainer(const T& t){
         if constexpr(has_cols<T>::value){
@@ -31,10 +30,11 @@ struct dimension_obtainer{
             height = t.height();
         }
     }
-    
+
 };
-template<typename image>
-void write_bmp(std::ostream& ostr, const image& img){
+
+template<std::output_iterator<char> iterator, typename image>
+void write_bmp(iterator it, const image& img){
     const dimension_obtainer dims(img);
 
     unsigned int headers[13];
@@ -44,7 +44,7 @@ void write_bmp(std::ostream& ostr, const image& img){
     int red, green, blue;
     extrabytes = 4 - ((dims.width * 3) % 4);
     if (extrabytes == 4)
-    extrabytes = 0;
+        extrabytes = 0;
     paddedsize = ((dims.width * 3) + extrabytes) * dims.height;
 
     headers[0]  = paddedsize + 54;      // bfSize (whole file size)
@@ -59,23 +59,24 @@ void write_bmp(std::ostream& ostr, const image& img){
     headers[9]  = 0;                    // biXPelsPerMeter
     headers[10] = 0;                    // biYPelsPerMeter
     headers[11] = 0;                    // biClrUsed
-    headers[12] = 0; 
-    ostr << "BM";
+    headers[12] = 0;
+    *it++ = 'B';
+    *it++ = 'M';
     for (n = 0; n <= 5; n++){
-        ostr << char( headers[n] & 0x000000FF);
-        ostr << char((headers[n] & 0x0000FF00) >> 8);
-        ostr << char((headers[n] & 0x00FF0000) >> 16);
-        ostr << char((headers[n] & (unsigned int) 0xFF000000) >> 24);
+        *it++ = char( headers[n] & 0x000000FF);
+        *it++ = char((headers[n] & 0x0000FF00) >> 8);
+        *it++ = char((headers[n] & 0x00FF0000) >> 16);
+        *it++ = char((headers[n] & (unsigned int) 0xFF000000) >> 24);
     }
-    ostr << char(1);
-    ostr << char(0);
-    ostr << char(24);
-    ostr << char(0);
+    *it++ = char(1);
+    *it++ = char(0);
+    *it++ = char(24);
+    *it++ = char(0);
     for (n = 7; n <= 12; n++){
-        ostr << char(headers[n] & 0x000000FF);
-        ostr << char((headers[n] & 0x0000FF00) >> 8);
-        ostr << char((headers[n] & 0x00FF0000) >> 16);
-        ostr << char((headers[n] & (unsigned int) 0xFF000000) >> 24);
+        *it++ = char(headers[n] & 0x000000FF);
+        *it++ = char((headers[n] & 0x0000FF00) >> 8);
+        *it++ = char((headers[n] & 0x00FF0000) >> 16);
+        *it++ = char((headers[n] & (unsigned int) 0xFF000000) >> 24);
     }
     for (y = 0; y < dims.height; y++){
         for (x = 0; x < dims.width; x++){
@@ -89,17 +90,21 @@ void write_bmp(std::ostream& ostr, const image& img){
                 green = img(x, y)[1];
                 blue =  img(x, y)[2];
             }
-            if (red > 255) red = 255; if (red < 0) red = 0;
-            if (green > 255) green = 255; if (green < 0) green = 0;
-            if (blue > 255) blue = 255; if (blue < 0) blue = 0;
-            ostr << char(blue);
-            ostr << char(green);
-            ostr << char(red);
+            red = std::clamp(red, 0, 255);
+            green = std::clamp(green, 0, 255);
+            blue = std::clamp(blue, 0, 255);
+            *it++ = char(blue);
+            *it++ = char(green);
+            *it++ = char(red);
         }
         if (extrabytes){
             for (n = 1; n <= extrabytes; n++){
-                ostr << char(0);
+                *it++ = char(0);
             }
         }
     }
+}
+template<typename image>
+void write_bmp(std::ostream& ostr, const image& img){
+    write_bmp(std::ostreambuf_iterator(ostr), img);
 }
